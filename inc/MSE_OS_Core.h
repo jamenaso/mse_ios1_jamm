@@ -9,6 +9,7 @@
 #define ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "board.h"
 
 /************************************************************************************
@@ -51,22 +52,77 @@
 #define INIT_XPSR 	1 << 24				//xPSR.T = 1
 #define EXEC_RETURN	0xFFFFFFF9			//retornar a modo thread con MSP, FPU no utilizada
 
-/*==================[definicion de datos externa]=================================*/
-
-extern uint32_t sp_tarea1;					//Stack Pointer para la tarea 1
-extern uint32_t sp_tarea2;					//Stack Pointer para la tarea 2
-extern uint32_t sp_tarea3;					//Stack Pointer para la tarea 3
-extern uint32_t sp_tarea4;					//Stack Pointer para la tarea 4
-
 /************************************************************************************
  * 						Definiciones varias
  ***********************************************************************************/
 #define STACK_FRAME_SIZE	8
 #define FULL_REG_STACKING_SIZE 		17	//16 core registers + el valor del registro de Lr Previo link register
 
+#define TASK_NAME_SIZE			10 //Tamaño máximo del vector del nombre de las tareas
+#define MAX_TASK_NUMBER			8  //número máximo de tareas en el OS
+
+/*==================[definicion codigos de error del sistema operativo]=================================*/
+
+#define ERR_OS_QUANTITY_TASK	-1
+
+/*==================[definicion de datos del sistema operativo]=================================*/
+
+/************************************************************************************
+ * 			Definición de los estados del sistema operativo
+ ***********************************************************************************/
+
+enum _osState {
+	NORMAL_RUN,
+	FROM_RESET
+};
+
+typedef enum _osState osState;
+
+/************************************************************************************
+ * 			Definición de los estados de las tareas
+ ***********************************************************************************/
+
+enum _taskState {
+	READY,
+	RUNNING
+};
+
+typedef enum _taskState taskState;
+
+/************************************************************************************
+ * 			Definición de la estructura Tarea
+ ***********************************************************************************/
+
+struct _task{
+	uint32_t stack[STACK_SIZE/4];
+	uint32_t stack_pointer;
+	void *entry_point;
+	uint8_t id;
+	taskState state;
+};
+
+typedef struct _task task;
+
+/************************************************************************************
+ * 			Definición de la estructura del sistema operativo
+ ***********************************************************************************/
+
+struct _osCrt{
+	void *taskList[MAX_TASK_NUMBER]; //vector que almacena los punteros a estructuras (task)
+									 //de las tareas ingresadas al sistema operativo
+	int32_t err;					 //Contiene el ultimo error generado en el OS
+	uint8_t quantity_task;			 //cantidad de tareas programadas por el usuario
+	osState state;					 //variable que contiene el estado del sistema operativo
+
+	task *current_task;				//variable que almacena el puntero de la tarea actual
+	task *next_task;				//variable que almacena el puntero de la tarea siguiente
+};
+
+typedef struct _osCrt osCrt;
+
 /*==================[definicion de prototipos]=================================*/
 
-void os_InitTarea(void *tarea, uint32_t *stack, uint32_t *stack_pointer);
+void os_InitTask(void *entryPoint, task *task_init);
 void os_Init(void);
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */
