@@ -2,7 +2,7 @@
  * MSE_OS_Core.h
  *
  *  Created on: 26 mar. 2020
- *      Author: gonza
+ *      Author:
  */
 
 #ifndef ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_
@@ -19,8 +19,6 @@
 
 //----------------------------------------------------------------------------------
 
-
-
 /************************************************************************************
  * 	Posiciones dentro del stack frame de los registros que conforman el stack frame
  ***********************************************************************************/
@@ -33,6 +31,14 @@
 #define R2			6
 #define R1			7
 #define R0			8
+#define R4			9
+#define R5			10
+#define R6			11
+#define R7			12
+#define R8			13
+#define R9			14
+#define R10 		15
+#define R11 		16
 
 //----------------------------------------------------------------------------------
 
@@ -44,21 +50,21 @@
 #define INIT_XPSR 	1 << 24				//xPSR.T = 1
 #define EXEC_RETURN	0xFFFFFFF9			//retornar a modo thread con MSP, FPU no utilizada
 
-//----------------------------------------------------------------------------------
+/*==================[definicion de datos externa]=================================*/
 
+extern uint32_t sp_tarea1;					//Stack Pointer para la tarea 1
+extern uint32_t sp_tarea2;					//Stack Pointer para la tarea 2
+extern uint32_t sp_tarea3;					//Stack Pointer para la tarea 3
 
 /************************************************************************************
  * 						Definiciones varias
  ***********************************************************************************/
 #define STACK_FRAME_SIZE	8
-
+#define FULL_REG_STACKING_SIZE 		16	//16 core registers
 
 /*==================[definicion de prototipos]=================================*/
 
 void os_InitTarea(void *tarea, uint32_t *stack, uint32_t *stack_pointer);
-
-
-
-
+void os_Init(void);
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */
