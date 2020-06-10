@@ -124,5 +124,6 @@ typedef struct _osCrt osCrt;
 
 void os_InitTask(void *entryPoint, task *task_init);
 void os_Init(void);
+int32_t os_getError(void);
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */
