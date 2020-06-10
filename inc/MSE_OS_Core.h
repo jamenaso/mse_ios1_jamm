@@ -61,10 +61,16 @@
 #define TASK_NAME_SIZE			10 //Tamaño máximo del vector del nombre de las tareas
 #define MAX_TASK_NUMBER			8  //número máximo de tareas en el OS
 
+#define PRIORITY_MAX		0
+#define PRIORITY_MIN		3
+
+#define PRIORITY_SIZE		(PRIORITY_MIN-PRIORITY_MAX) + 1
+
 /*==================[definicion codigos de error del sistema operativo]=================================*/
 
-#define ERR_OS_QUANTITY_TASK	-1
-#define ERR_OS_SCHEDULER		-2
+#define ERR_OS_QUANTITY_TASK			-1
+#define ERR_OS_SCHEDULER				-2
+#define ERR_OS_PRIORITY_TOTAL_COUNT 	-3
 
 /*==================[definicion de datos del sistema operativo]=================================*/
 
@@ -101,6 +107,7 @@ struct _task{
 	void *entry_point;
 	uint8_t id;
 	taskState state;
+	uint8_t priority;
 };
 
 typedef struct _task task;
@@ -120,15 +127,26 @@ struct _osCrt{
 	task *next_task;				//variable que almacena el puntero de la tarea siguiente
 
 	bool contexSwitch;				//Bandera para realizar el cambio de contexto en el sistick
+
+	task *taskPriority[PRIORITY_SIZE][MAX_TASK_NUMBER]; /*Vector bidimencional que contiene la direcciones
+														 *de las tareas que tienen determinada prioridad
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 *Primer campo representan las prioridades del sistema
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 *Segundo campo representa el numero maximo de
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 *tareas que pueden tener una misma prioridad
+														 */
+	uint8_t countPriority[PRIORITY_SIZE]; /*Vector que contiene el número de tareas con las misma prioridad
+										   *Cada campo del vector representa una prioridad
+										   */
+
 };
 
 typedef struct _osCrt osCrt;
 
 /*==================[definicion de prototipos]=================================*/
 
-void os_InitTask(void *entryPoint, task *task_init);
-void os_Init(void);
-void setStateTask(uint8_t id, taskState state);
+void osInitTask(void *entryPoint, task *task_init, uint8_t priority);
+void osInit(void);
 int32_t os_getError(void);
+void setStateTask(uint8_t id, taskState state);
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */

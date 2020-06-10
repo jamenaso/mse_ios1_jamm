@@ -31,11 +31,11 @@ PendSV_Handler:
 	* Cuando se ingrea al handler de PendSV lo primero que se ejecuta es un push para
 	* guardar los registros R4-R11 y el valor de LR, que en este punto es EXEC_RETURN
 	* El push se hace al reves de como se escribe en la instruccion, por lo que LR
-	* se guarda en la posicion 9 (luego del stack frame). Como la funcion getContextoSiguiente
+	* se guarda en la posicion 9 (luego del stack frame). Como la funcion getNextContext
 	* se llama con un branch con link, el valor del LR es modificado guardando la direccion
 	* de retorno una vez se complete la ejecucion de la funcion
 
-	* El pasaje de argumentos a getContextoSiguiente se hace como especifica el AAPCS siendo
+	* El pasaje de argumentos a getNextContext se hace como especifica el AAPCS siendo
 	* el unico argumento pasado por RO, y el valor de retorno tambien se almacena en R0
 	*
 	* NOTA: El primer ingreso a este handler (luego del reset) implica que el push se hace sobre el
