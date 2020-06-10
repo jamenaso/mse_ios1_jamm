@@ -27,6 +27,18 @@ void os_InitTarea(void *tarea, uint32_t *stack_tarea, uint32_t *stack_pointer)  
 	stack_tarea[STACK_SIZE/4 - XPSR] = INIT_XPSR;								//necesari para bit thumb
 	stack_tarea[STACK_SIZE/4 - PC_REG] = (uint32_t)tarea;		//direccion de la tarea (ENTRY_POINT)
 
+	/**
+	 * El valor previo de LR (que es EXEC_RETURN en este caso) es necesario dado que
+	 * en esta implementacion, se llama a una funcion desde dentro del handler de PendSV
+	 * con lo que el valor de LR se modifica por la direccion de retorno para cuando
+	 * se termina de ejecutar getContextoSiguiente
+	 */
+	stack_tarea[STACK_SIZE/4 - LR_PREV_VALUE] = EXEC_RETURN;
+
+	/**
+	 * El valor del Full Reg Stacking size paso a ser de 17 ya que se guarda el valor anterior del link register
+	 */
+
 	*stack_pointer = (uint32_t) (stack_tarea + STACK_SIZE/4 - FULL_REG_STACKING_SIZE);
 
 }
@@ -48,7 +60,7 @@ void os_Init(void)  {
 	 * no se de la condicion de fault mencionada en la teoria, debemos bajar su prioridad en el
 	 * NVIC. La cuenta matematica que se observa da la probabilidad mas baja posible.
 	 */
-	//NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1);
+	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1); // @suppress("Symbol is not resolved")
 }
 
 /*************************************************************************************************
@@ -61,25 +73,25 @@ void os_Init(void)  {
 	 *  @param 		None.
 	 *  @return     None.
 ***************************************************************************************************/
-//void SysTick_Handler(void)  {
+void SysTick_Handler(void)  {
 
 	/**
 	 * Se setea el bit correspondiente a la excepcion PendSV
 	 */
-	//SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
+	SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
 
 	/**
 	 * Instruction Synchronization Barrier; flushes the pipeline and ensures that
 	 * all previous instructions are completed before executing new instructions
 	 */
-	//__ISB();
+	__ISB();
 
 	/**
 	 * Data Synchronization Barrier; ensures that all memory accesses are
 	 * completed before next instruction is executed
 	 */
-	//__DSB();
-//}
+	__DSB();
+}
 
 
 
@@ -135,6 +147,17 @@ uint32_t getContextoSiguiente(uint32_t sp_actual)  {
 		 */
 	case 3:
 		sp_tarea3 = sp_actual;
+		sp_siguiente = sp_tarea4;
+		tarea_actual = 4;
+		break;
+
+		/**
+		 * Tarea actual es tarea4. Recuperamos el stack pointer (MSP) y lo
+		 * almacenamos en sp_tarea4. Luego cargamos en la variable de retorno
+		 * sp_siguiente el valor del stack pointer de la tarea1
+		 */
+	case 4:
+		sp_tarea4 = sp_actual;
 		sp_siguiente = sp_tarea1;
 		tarea_actual = 1;
 		break;
