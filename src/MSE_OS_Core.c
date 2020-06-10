@@ -13,9 +13,15 @@
  ***********************************************************************************/
 
 static osCrt crt_OS;
-
+static task g_idleTask;
 
 /**********************************************************************************/
+
+/************************************************************************************
+ * 			Definición de funciones estaticas, para no ser vistas y editadas por usuario
+ ***********************************************************************************/
+
+static void initIdleTask(void);
 
 /*==================[definicion de hooks debiles]=================================*/
 
@@ -90,6 +96,44 @@ void __attribute__((weak)) errorHook(void *caller)  {
 
 
 /*************************************************************************************************
+	 *  @brief Tarea Idle
+     *
+     *  @details
+     *   Esta función tiene como atributo dèbil para que pueda ser sobre escrita por el usuario.
+     *	En el caso de no ser sobre escrita llama a la función WFI para que el procesador
+     *	entre en estado de baja potencia
+     *
+	 *  @param none
+	 *  @return none.
+***************************************************************************************************/
+void __attribute__((weak)) idleTask(void)  {
+	while(1){
+		__WFI();
+	}
+}
+
+/*************************************************************************************************
+	 *  @brief Función que configura el estado de determinada tarea
+     *
+     *  @details
+	 *  Función que asigna a una tarea con id determinado estado
+     *
+	 *  @param id			Id de la tarea que a la que se desea cambiar el estado
+	 *  @param state		estado que de la tarea a cambiar
+	 *  @see errorHook
+***************************************************************************************************/
+
+void setStateTask(uint8_t id,taskState state)
+{
+	int i = 0;
+	for(i = 0; i < crt_OS.quantity_task; i++)
+	{
+		if(crt_OS.taskList[i]->id == id)
+			crt_OS.taskList[i]->state = state;
+	}
+}
+
+/*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
      *
      *  @details
@@ -123,7 +167,10 @@ void os_InitTask(void *entryPoint, task *task_init)
 																		  *asociada a la tarea, asignandole el
 																		  *parámetro (ENTRY_POINT)
 																		 */
-
+		task_init->stack[STACK_SIZE/4 - LR] = (uint32_t)returnHook;		/*Se configura el registro Linker return al hook de retorno
+																		* En el caso de que alguna tarea retorne,
+																		* no deberia pasar nunca, si pasa hay un error.
+																		*/
 		/*
 		 *Se guarda en el stack el valor previo del LR ya que se necesita
 		 *porque el valor del LR en la interrupción de PendSV_Handler
@@ -166,6 +213,51 @@ void os_InitTask(void *entryPoint, task *task_init)
 }
 
 /*************************************************************************************************
+	 *  @brief Inicializa la tarea idle del OS
+     *
+     *  @details
+     *   Inicializa una tarea estatica idle que se debe llamar en el sistema y no debe ser vista ni
+     *   editada por el usuario
+     *
+	 *  @return     None.
+	 *  @return     None.
+***************************************************************************************************/
+static void initIdleTask(void)
+{
+	g_idleTask.stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;				/*Se configura el bit thumb en uno para
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 *indicar que solo se trabaja con
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 *instrucciones thumb
+	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 */
+	g_idleTask.stack[STACK_SIZE/4 - PC_REG] = (uint32_t)idleTask;	 /*Se inicializa el registro PC del stack de
+																	  *la tarea con la dirección de la función
+																	  *asociada a la tarea, asignandole el
+																	  *parámetro (ENTRY_POINT)
+																	 */
+	g_idleTask.stack[STACK_SIZE/4 - LR] = (uint32_t)returnHook;		/*Se configura el registro Linker return al hook de retorno
+																	* En el caso de que alguna tarea retorne,
+																	* no deberia pasar nunca, si pasa hay un error.
+																	*/
+	/*
+	 *Se guarda en el stack el valor previo del LR ya que se necesita
+	 *porque el valor del LR en la interrupción de PendSV_Handler
+	 *cambia al llamar la funcion de cambio de contexto getContextoSiguiente
+	 */
+	g_idleTask.stack[STACK_SIZE/4 - LR_PREV_VALUE] = EXEC_RETURN;
+
+	g_idleTask.stack_pointer = (uint32_t) (g_idleTask.stack + STACK_SIZE/4 - FULL_REG_STACKING_SIZE);
+
+	/*
+	 * En esta parte se asigna a las variables de la estructura de la tarea inicializada;
+	 * el entryPoint (dirección de la función asociada a la tarea),
+	 * el id que se assigna con la variable estatica que incrementa a cada inicialización de tarea,
+	 * y el estado de la tarea que se inicializa con READY, todas se inicializan con ese estado.
+	 */
+	g_idleTask.entry_point = idleTask;
+	g_idleTask.id = 0xFF;
+	g_idleTask.state = READY;
+}
+
+/*************************************************************************************************
 	 *  @brief Inicializa el OS.
      *
      *  @details
@@ -193,7 +285,11 @@ void os_Init(void) {
 	crt_OS.current_task = NULL;
 	crt_OS.next_task = NULL;
 
+	/*
+	 * Inicialización de la tarea Idle
+	 */
 
+	initIdleTask();
 	/*
 	 * El vector de tareas termina de inicializarse asignando NULL a las posiciones que estan
 	 * luego de la ultima tarea. Esta situacion se da cuando se definen menos de 8 tareas.
@@ -234,30 +330,61 @@ int32_t os_getError(void)  {
 	 *  @return     None.
 ***************************************************************************************************/
 static void scheduler(void){
-
+	uint8_t index = 0;
+	bool flag = true;
+	uint8_t blockedTasks = 0;
 	/*
 	 * Se verifica si el estado del Sistema Operativo es después de un Reset, en ese caso
 	 * la tarea actual se carga con la primera tarea de la lista de la estructura del control de OS
 	 */
 	if(crt_OS.state == FROM_RESET){
 		crt_OS.current_task = (task*) crt_OS.taskList[0];
+		crt_OS.contexSwitch = true;
 	}
 	else {
 		/*
-		 * En este apartado se verifica que el id de la tarea actual más uno se encuentre dentro
-		 * del rango de cantidad de tareas en el OS, comparando que sea menor a la variable cantidad
-		 * de tareas en el OS.
-		 * Si está en el rango, a la tarea siguiente se le asigna la tarea de indice siguiente a la actual
-		 * si no está en el rango se le asigna la primera tarea de la lista
+		 * En este apartado se verifica que el id de la tarea actual más uno se encuentre en estado
+		 * running, si es asi, a la tarea de siguiente del sistema se le asigna la tarea que se encuentra en el
+		 * siguiente indice del vector. Sin embargo, si la tarea se encuentra en estado blocked pasa a la siguiente
+		 * tarea recorriendo el vector hasta que una tarea este en estado Running. si todas las tareas estan
+		 * bloqueadas entonces se pasa a la tarea idle.
+		 * En el caso de que la tarea actual sigue en Running y las demas estan bloqueadas el sistema no realiza
+		 * cambio de contexto
+		 *
 		 */
-		if((crt_OS.current_task->id + 1) < crt_OS.quantity_task){
-			crt_OS.next_task = crt_OS.taskList[crt_OS.current_task->id + 1];
-		}
-		else{
-			crt_OS.current_task = (task*) crt_OS.taskList[0];
+		index = crt_OS.current_task->id + 1;
+
+		while(flag){
+
+            if(index >= crt_OS.quantity_task)
+                index = 0;
+
+			switch (((task*)crt_OS.taskList[index])->state) {
+
+				case READY:
+					crt_OS.next_task = (task*) crt_OS.taskList[index];
+					crt_OS.contexSwitch = true;
+					flag = false;
+					break;
+				case BLOCKED:
+					blockedTasks++;
+					if (blockedTasks == crt_OS.quantity_task)  {
+						crt_OS.next_task = &g_idleTask;
+						crt_OS.contexSwitch = true;
+						flag = false;
+					}
+					break;
+				case RUNNING:
+					crt_OS.contexSwitch = false;
+					flag = false;
+					break;
+				default:
+					crt_OS.err = ERR_OS_SCHEDULER;
+					errorHook(scheduler);
+			}
+			index++;
 		}
 	}
-
 }
 
 /*************************************************************************************************
@@ -288,22 +415,24 @@ void SysTick_Handler(void)  {
 
 	tickHook();
 
-	/**
-	 * Se setea el bit correspondiente a la excepcion PendSV
-	 */
-	SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
+	if(crt_OS.contexSwitch){
+		/**
+		 * Se setea el bit correspondiente a la excepcion PendSV
+		 */
+		SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
 
-	/**
-	 * Instruction Synchronization Barrier; flushes the pipeline and ensures that
-	 * all previous instructions are completed before executing new instructions
-	 */
-	__ISB();
+		/**
+		 * Instruction Synchronization Barrier; flushes the pipeline and ensures that
+		 * all previous instructions are completed before executing new instructions
+		 */
+		__ISB();
 
-	/**
-	 * Data Synchronization Barrier; ensures that all memory accesses are
-	 * completed before next instruction is executed
-	 */
-	__DSB();
+		/**
+		 * Data Synchronization Barrier; ensures that all memory accesses are
+		 * completed before next instruction is executed
+		 */
+		__DSB();
+	}
 }
 
 
@@ -319,6 +448,7 @@ void SysTick_Handler(void)  {
 	 *  @return     El valor a cargar en MSP para apuntar al contexto de la tarea siguiente.
 ***************************************************************************************************/
 uint32_t getNextContext(uint32_t sp_current)  {
+
 	uint32_t sp_next;
 
 
@@ -343,13 +473,17 @@ uint32_t getNextContext(uint32_t sp_current)  {
 	 */
 	else {
 		crt_OS.current_task->stack_pointer = sp_current;
-		crt_OS.current_task->state = READY;
+
+		if (crt_OS.current_task->state == RUNNING)
+			crt_OS.current_task->state = READY;
 
 		sp_next = crt_OS.next_task->stack_pointer;
 
 		crt_OS.current_task = crt_OS.next_task;
 		crt_OS.current_task->state = RUNNING;
 	}
+
+	crt_OS.contexSwitch = false;
 
 	return sp_next;
 }

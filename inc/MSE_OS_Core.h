@@ -64,6 +64,7 @@
 /*==================[definicion codigos de error del sistema operativo]=================================*/
 
 #define ERR_OS_QUANTITY_TASK	-1
+#define ERR_OS_SCHEDULER		-2
 
 /*==================[definicion de datos del sistema operativo]=================================*/
 
@@ -84,7 +85,8 @@ typedef enum _osState osState;
 
 enum _taskState {
 	READY,
-	RUNNING
+	RUNNING,
+	BLOCKED
 };
 
 typedef enum _taskState taskState;
@@ -108,7 +110,7 @@ typedef struct _task task;
  ***********************************************************************************/
 
 struct _osCrt{
-	void *taskList[MAX_TASK_NUMBER]; //vector que almacena los punteros a estructuras (task)
+	task *taskList[MAX_TASK_NUMBER]; //vector que almacena los punteros a estructuras (task)
 									 //de las tareas ingresadas al sistema operativo
 	int32_t err;					 //Contiene el ultimo error generado en el OS
 	uint8_t quantity_task;			 //cantidad de tareas programadas por el usuario
@@ -116,6 +118,8 @@ struct _osCrt{
 
 	task *current_task;				//variable que almacena el puntero de la tarea actual
 	task *next_task;				//variable que almacena el puntero de la tarea siguiente
+
+	bool contexSwitch;				//Bandera para realizar el cambio de contexto en el sistick
 };
 
 typedef struct _osCrt osCrt;
@@ -124,6 +128,7 @@ typedef struct _osCrt osCrt;
 
 void os_InitTask(void *entryPoint, task *task_init);
 void os_Init(void);
+void setStateTask(uint8_t id, taskState state);
 int32_t os_getError(void);
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */
