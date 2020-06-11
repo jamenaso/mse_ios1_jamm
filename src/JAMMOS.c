@@ -1,11 +1,11 @@
 /*
  * MSE_OS_Core.c
  *
- *  Created on: mar. 2020
- *      Author:
+ *  Created on: mayo. 2020
+ *      Author: jamm
  */
 
-#include "MSE_OS_Core.h"
+#include "../inc/JAMMOS.h"
 
 
 /************************************************************************************
@@ -23,6 +23,7 @@ static task g_idleTask;
 
 static void initIdleTask(void);
 static void initPriority(void);
+static void scheduler(void);
 
 /*==================[definicion de hooks debiles]=================================*/
 
@@ -30,7 +31,6 @@ static void initPriority(void);
  * Esta sección contiene los hooks de sistema, los cuales el usuario del OS puede
  * redefinir dentro de su código y poblarlos según necesidad
  */
-
 
 /*************************************************************************************************
 	 *  @brief Hook de retorno de tareas
@@ -46,8 +46,6 @@ static void initPriority(void);
 void __attribute__((weak)) returnHook(void)  {
 	while(1);
 }
-
-
 
 /*************************************************************************************************
 	 *  @brief Hook de tick de sistema
@@ -69,8 +67,6 @@ void __attribute__((weak)) returnHook(void)  {
 void __attribute__((weak)) tickHook(void)  {
 	__asm volatile( "nop" );
 }
-
-
 
 /*************************************************************************************************
 	 *  @brief Hook de error de sistema
@@ -94,7 +90,6 @@ void __attribute__((weak)) errorHook(void *caller)  {
 	 */
 	while(1);
 }
-
 
 /*************************************************************************************************
 	 *  @brief Tarea Idle
@@ -161,6 +156,10 @@ void osInitTask(void *entryPoint, task *task_init, uint8_t priority)
 		task_init->stack[STACK_SIZE/4 - LR_PREV_VALUE] = EXEC_RETURN;
 
 		task_init->stack_pointer = (uint32_t) (task_init->stack + STACK_SIZE/4 - FULL_REG_STACKING_SIZE);
+
+		task_init->ticksTimer = 0; /*
+									* Se inicializa la variable dee conteo de la función osDelay a 0
+		 	 	 	 	 	 	 	*/
 
 		/*
 		 * En esta parte se asigna a las variables de la estructura de la tarea inicializada;
@@ -375,23 +374,49 @@ int32_t os_getError(void)  {
 }
 
 /*************************************************************************************************
-	 *  @brief Función que configura el estado de determinada tarea
+	 *  @brief Función que getCurrentTaskOS
      *
      *  @details
-	 *  Función que asigna a una tarea con id determinado estado
+	 *  Función que devuelve como parametro la tarea actual del sistema
      *
-	 *  @param id			Id de la tarea que a la que se desea cambiar el estado
-	 *  @param state		estado que de la tarea a cambiar
-	 *  @see errorHook
+	 *  @param none
+	 *  @return task Tarea actual en el sistema de control del OS
 ***************************************************************************************************/
-
-void setStateTask(uint8_t id,taskState state)
+task* getCurrentTask(void)
 {
-	int i = 0;
-	for(i = 0; i < crt_OS.quantity_task; i++)
+	return crt_OS.current_task;
+}
+
+/*************************************************************************************************
+	 *  @brief Llama al scheduler y a cambio de contexto si es necesario
+     *
+     *  @details
+     *  Función que llama al scheuler y al cambio de contexto si es necesario
+     *  en la función delay se llama para no se tenga que espera a la próxima llamada del stick
+     *
+	 *  @param 		None
+	 *  @return     None.
+***************************************************************************************************/
+void osForceSchCC(void){
+	scheduler();
+	if(crt_OS.contexSwitch)
 	{
-		if(crt_OS.taskList[i]->id == id)
-			crt_OS.taskList[i]->state = state;
+		/**
+		 * Se setea el bit correspondiente a la excepcion PendSV
+		 */
+		SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
+
+		/**
+		 * Instruction Synchronization Barrier; flushes the pipeline and ensures that
+		 * all previous instructions are completed before executing new instructions
+		 */
+		__ISB();
+
+		/**
+		 * Data Synchronization Barrier; ensures that all memory accesses are
+		 * completed before next instruction is executed
+		 */
+		__DSB();
 	}
 }
 
@@ -406,8 +431,7 @@ void setStateTask(uint8_t id,taskState state)
 	 *  @param 		None.
 	 *  @return     None.
 ***************************************************************************************************/
-
-void scheduler(void){
+static void scheduler(void) {
 
 	static uint8_t priorityIndex[PRIORITY_SIZE];
 	uint8_t blockedTasks[PRIORITY_SIZE];
@@ -416,7 +440,7 @@ void scheduler(void){
 	uint8_t priority = PRIORITY_MAX;
 	uint8_t priorityAux = PRIORITY_MAX;
 
-	uint8_t indexNextTask = 0;
+	uint8_t indexTask = 0;
 
 	bool flag = true;
 
@@ -433,7 +457,7 @@ void scheduler(void){
 	 * bidimencional (taskPriority), este incrementa cada vez que el algoritmo verifica que todas las tareas
 	 * de una prioridad mayor estan bloqueadas
 	 *
-	 * La variable indexNextTask se utiliza como índice temporal para recorrer las tareas en los
+	 * La variable indexTask se utiliza como índice temporal para recorrer las tareas en los
 	 * vectores de las prioridades
 	 *
 	 * La bandera (flag) sirve para verificar si se debe salir o no del blucle de verificación de prioridades.
@@ -457,6 +481,15 @@ void scheduler(void){
 	}
 	else {
 		/*
+		 * Verificación de que las tareas con determinado indice que están bloqueadas y han llegado a
+		 * su contadores de ticksTimer a cero se cambia a estado READY
+		 */
+		for(i = 0; i < crt_OS.quantity_task; i++)
+		{
+			if(crt_OS.taskList[i]->ticksTimer == 0 && crt_OS.taskList[i]->state == BLOCKED)
+				crt_OS.taskList[i]->state = READY;
+		}
+		/*
 		 * Cuando el estado del sistema es diferente al proveniente de un Reset se clarean los contadores
 		 * de las tareas bloqueadas en todos los niveles.
 		 *
@@ -477,12 +510,12 @@ void scheduler(void){
 			 * a que tarea asignar la tarea siguiente.
 			 */
 
-			indexNextTask = priorityIndex[priority];
+			indexTask = priorityIndex[priority];
 
-			if(indexNextTask >= crt_OS.countPriority[priority])
-				indexNextTask = 0;
+			if(indexTask >= crt_OS.countPriority[priority])
+				indexTask = 0;
 
-			switch (((task*)crt_OS.taskPriority[priority][indexNextTask])->state){
+			switch (((task*)crt_OS.taskPriority[priority][indexTask])->state){
 
 				case READY:
 
@@ -491,7 +524,7 @@ void scheduler(void){
 					 * la tarea que tiene el estado en READY asociada al indice de cada prioridad
 					 */
 
-					crt_OS.next_task = (task*) crt_OS.taskPriority[priority][indexNextTask];
+					crt_OS.next_task = (task*) crt_OS.taskPriority[priority][indexTask];
 					crt_OS.contexSwitch = true;
 					flag = false;
 					break;
@@ -575,6 +608,17 @@ void scheduler(void){
 	 *  @return     None.
 ***************************************************************************************************/
 void SysTick_Handler(void)  {
+
+	int i = 0;
+	/*
+	 * Se realiza un recorrido por todas las tareas decrementando la variable de conteo
+	 * del timer para la función delay
+	 */
+	for(i = 0; i < crt_OS.quantity_task; i++)
+	{
+		if(crt_OS.taskList[i]->ticksTimer > 0)
+			crt_OS.taskList[i]->ticksTimer--;
+	}
 
 	/*
 	 * Dentro del SysTick handler se llama al scheduler. Separar el scheduler de

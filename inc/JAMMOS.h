@@ -1,12 +1,12 @@
 /*
  * MSE_OS_Core.h
  *
- *  Created on: 26 mar. 2020
- *      Author:
+ *  Created on: may. 2020
+ *      Author: JAMM
  */
 
-#ifndef ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_
-#define ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_
+#ifndef JAMMOS_H_
+#define JAMMOS_H_
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -108,6 +108,11 @@ struct _task{
 	uint8_t id;
 	taskState state;
 	uint8_t priority;
+
+	uint32_t ticksTimer; 	/*
+							 * Variable que lleva la cuenta de los ticks que la tarea lleva en conteo cuando
+	 	 	 	 	 	 	 * se llama a la función osDelay
+	 	 	 	 	 	 	 */
 };
 
 typedef struct _task task;
@@ -137,7 +142,6 @@ struct _osCrt{
 	uint8_t countPriority[PRIORITY_SIZE]; /*Vector que contiene el número de tareas con las misma prioridad
 										   *Cada campo del vector representa una prioridad
 										   */
-
 };
 
 typedef struct _osCrt osCrt;
@@ -147,6 +151,7 @@ typedef struct _osCrt osCrt;
 void osInitTask(void *entryPoint, task *task_init, uint8_t priority);
 void osInit(void);
 int32_t os_getError(void);
-void setStateTask(uint8_t id, taskState state);
+task* getCurrentTask(void);
+void osForceSchCC(void);
 
-#endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */
+#endif /* JAMMOS_H_ */

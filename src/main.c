@@ -1,10 +1,9 @@
 /*==================[inclusions]=============================================*/
 
 #include "main.h"
-
 #include "board.h"
-
-#include "MSE_OS_Core.h"
+#include "JAMMOS.h"
+#include "JAMMOS_API.h"
 
 /*==================[macros and definitions]=================================*/
 
@@ -46,9 +45,8 @@ static void initHardware(void)  {
 void task1(void)  {
 	int i = 0;
 	while (1) {
+		osDelay(500);
 		i++;
-		if(i == 1000)
-			setStateTask(0,BLOCKED);
 	}
 }
 
@@ -57,12 +55,6 @@ void task2(void)  {
 	int j = 0;
 	while (1) {
 		j++;
-
-		if(j == 1000)
-			setStateTask(1,BLOCKED);
-
-		if(j == 10000)
-			setStateTask(1,READY);
 	}
 }
 
@@ -71,11 +63,6 @@ void task3(void)  {
 	int k = 0;
 	while (1) {
 		k++;
-		if(k == 1000)
-			setStateTask(2,BLOCKED);
-
-		if(k == 11000)
-			setStateTask(2,READY);
 	}
 }
 
@@ -84,8 +71,6 @@ void task4(void)  {
 	int l = 0;
 	while (1) {
 		l++;
-		if(l == 1000)
-			setStateTask(3,BLOCKED);
 	}
 }
 
@@ -94,8 +79,6 @@ void task5(void)  {
 	int m = 0;
 	while (1) {
 		m++;
-		if(m == 1000)
-			setStateTask(4,BLOCKED);
 	}
 }
 
@@ -104,8 +87,6 @@ void task6(void)  {
 	int n = 0;
 	while (1) {
 		n++;
-		if(n == 1000)
-			setStateTask(5,BLOCKED);
 	}
 }
 
@@ -114,8 +95,6 @@ void task7(void)  {
 	int o = 0;
 	while (1) {
 		o++;
-		if(o == 1000)
-			setStateTask(6,BLOCKED);
 	}
 }
 
@@ -123,9 +102,8 @@ void task7(void)  {
 void task8(void)  {
 	int p = 0;
 	while (1) {
+		osDelay(200);
 		p++;
-		if(p == 1000)
-			setStateTask(7,BLOCKED);
 	}
 }
 /*============================================================================*/
