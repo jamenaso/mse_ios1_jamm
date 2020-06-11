@@ -35,7 +35,8 @@ PROJECT_NAME := $(notdir $(PROJECT))
 # Modules needed by the application
 PROJECT_MODULES := modules/$(TARGET)/base \
                    modules/$(TARGET)/board \
-                   modules/$(TARGET)/chip
+                   modules/$(TARGET)/chip \
+                   modules/$(TARGET)/sapi                    
 
 # source files folder
 PROJECT_SRC_FOLDERS := $(PROJECT)/src

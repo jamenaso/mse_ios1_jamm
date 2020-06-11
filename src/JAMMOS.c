@@ -157,7 +157,7 @@ void osInitTask(void *entryPoint, task *task_init, uint8_t priority)
 
 		task_init->stack_pointer = (uint32_t) (task_init->stack + STACK_SIZE/4 - FULL_REG_STACKING_SIZE);
 
-		task_init->ticksTimer = 0; /*
+		task_init->ticksWaiting = 0; /*
 									* Se inicializa la variable dee conteo de la función osDelay a 0
 		 	 	 	 	 	 	 	*/
 
@@ -480,15 +480,21 @@ static void scheduler(void) {
 			priorityIndex[i] = 0;
 	}
 	else {
-		/*
-		 * Verificación de que las tareas con determinado indice que están bloqueadas y han llegado a
-		 * su contadores de ticksTimer a cero se cambia a estado READY
+
+		/**
+		 * Se verifica el estado del control del OS, si se encuentra en estado SCHEDULING no se
+		 * ejecuta el algoritmo y la función retorna.
+		 * Se realiza en este parte de la función porque siempre entra a este apartado
+		 * deferente de cuando viene de RESET.
 		 */
-		for(i = 0; i < crt_OS.quantity_task; i++)
-		{
-			if(crt_OS.taskList[i]->ticksTimer == 0 && crt_OS.taskList[i]->state == BLOCKED)
-				crt_OS.taskList[i]->state = READY;
-		}
+		if(crt_OS.state == SCHEDULING)
+			return;
+
+		/**
+		 * El estado del control del OS se cambia a SCHEDULING evitando de que se realice ejecute
+		 * el algoritmo cuando se realizó el llamado en otro lado diferente al sistick
+		 */
+		crt_OS.state = SCHEDULING;
 		/*
 		 * Cuando el estado del sistema es diferente al proveniente de un Reset se clarean los contadores
 		 * de las tareas bloqueadas en todos los niveles.
@@ -523,7 +529,6 @@ static void scheduler(void) {
 					 * En este parte del código se asigna a la tarea siguiente del control
 					 * la tarea que tiene el estado en READY asociada al indice de cada prioridad
 					 */
-
 					crt_OS.next_task = (task*) crt_OS.taskPriority[priority][indexTask];
 					crt_OS.contexSwitch = true;
 					flag = false;
@@ -536,7 +541,6 @@ static void scheduler(void) {
 					 * encuentra en estado bloqueado incrementa el valor de las tareas bloqueadas
 					 * asociadas a cada prioridad en el vertor blockedTasks
 					 */
-
 					blockedTasks[priority]++;
 					if (blockedTasks[priority] >= crt_OS.countPriority[priority]){
 						priority++;
@@ -555,7 +559,6 @@ static void scheduler(void) {
 					 * En el caso de que la unica tarea que no se encuentra en estado bloqueado es la tarea
 					 * actual entonces no activa el cambio de contexto
 					 */
-
 					crt_OS.contexSwitch = false;
 					flag = false;
 					break;
@@ -566,12 +569,10 @@ static void scheduler(void) {
 					 * Si detecta un estado que no se encuentra definido entonces llama al hook de error
 					 * con argumento de la función scheduler
 					 */
-
 					crt_OS.err = ERR_OS_SCHEDULER;
 					errorHook(scheduler);
 					break;
 			}
-
 
 			/*
 			 * En este apartado del código se verifica e incrementa el indice que está asociado
@@ -594,6 +595,7 @@ static void scheduler(void) {
 				priorityIndex[priorityAux] = 0;
 		}
 	}
+	crt_OS.state = NORMAL_RUN;
 }
 
 /*************************************************************************************************
@@ -613,11 +615,16 @@ void SysTick_Handler(void)  {
 	/*
 	 * Se realiza un recorrido por todas las tareas decrementando la variable de conteo
 	 * del timer para la función delay
+	 * Verificación de que las tareas con determinado indice que están bloqueadas y han llegado a
+	 * su contadores de ticksTimer a cero se cambia a estado READY
 	 */
 	for(i = 0; i < crt_OS.quantity_task; i++)
 	{
-		if(crt_OS.taskList[i]->ticksTimer > 0)
-			crt_OS.taskList[i]->ticksTimer--;
+		if(crt_OS.taskList[i]->ticksWaiting > 0)
+			crt_OS.taskList[i]->ticksWaiting--;
+
+		if(crt_OS.taskList[i]->ticksWaiting == 0 && crt_OS.taskList[i]->state == BLOCKED)
+			crt_OS.taskList[i]->state = READY;
 	}
 
 	/*

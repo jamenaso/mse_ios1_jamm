@@ -80,7 +80,8 @@
 
 enum _osState {
 	NORMAL_RUN,
-	FROM_RESET
+	FROM_RESET,
+	SCHEDULING
 };
 
 typedef enum _osState osState;
@@ -109,7 +110,7 @@ struct _task{
 	taskState state;
 	uint8_t priority;
 
-	uint32_t ticksTimer; 	/*
+	uint32_t ticksWaiting; 	/*
 							 * Variable que lleva la cuenta de los ticks que la tarea lleva en conteo cuando
 	 	 	 	 	 	 	 * se llama a la función osDelay
 	 	 	 	 	 	 	 */
