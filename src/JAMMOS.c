@@ -143,6 +143,52 @@ inline void osExitCritical(void)  {
 }
 
 /*************************************************************************************************
+	 *  @brief Función que obtiene el estado del control del OS
+     *
+	 *  @param 		None
+	 *  @return     bool Estado de la del control del OS.
+***************************************************************************************************/
+osState osGetSytemState(void)
+{
+	return crt_OS.state;
+}
+
+/*************************************************************************************************
+	 *  @brief Función que configura el estado del control del OS
+     *
+	 *  @param 		state parametro con el estado que se desea configurar el control del OS
+	 *  @return     none
+***************************************************************************************************/
+void osSetSytemState(osState state)
+{
+	crt_OS.state = state;
+}
+
+/*************************************************************************************************
+	 *  @brief Función que configura la bandera que determina la ejecución de un scheduler después del
+	 *  llamado a una interrupción
+     *
+	 *  @param 		bool value true o false
+	 *  @return     none
+***************************************************************************************************/
+void osSetScheduleFromISR(bool value)
+{
+	crt_OS.schedulingFromIRQ = value;
+}
+
+/*************************************************************************************************
+	 *  @brief Función que obtiene la bandera que determina la ejecución de un scheduler después del
+	 *  llamado a una interrupción
+     *
+	 *  @param 		none
+	 *  @return     bool true o false
+***************************************************************************************************/
+bool osGetScheduleFromISR(void)
+{
+	return crt_OS.schedulingFromIRQ;
+}
+
+/*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
      *
      *  @details

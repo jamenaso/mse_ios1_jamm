@@ -17,21 +17,21 @@
 #define PRIORITY_2		2
 #define PRIORITY_3		3
 
+#define TEC1_PORT   0
+#define TEC1_BIT    4
+
+#define TEC2_PORT   0
+#define TEC2_BIT    8
+
 /*==================[Global data declaration]==============================*/
 
 #define nBLINK	10
 
-struct _userData{
-	uint16_t nInt;
-	float nFloat;
-	uint8_t nVector[4];
-};
-typedef struct _userData userData;
-
 task g_task1,g_task2,g_task3,g_task4; //Se declaran 8 tareas
 task g_task5,g_task6,g_task7,g_task8;
 
-queue queue1, queue2, queue3;
+semaphore sem1, sem2;
+queue queueUart;
 
 /*==================[internal functions declaration]=========================*/
 
@@ -41,6 +41,10 @@ queue queue1, queue2, queue3;
 
 /*==================[internal functions definition]==========================*/
 
+void t1_ISR(void);
+void t2_ISR(void);
+
+
 /** @brief hardware initialization function
  *	@return none
  */
@@ -48,6 +52,24 @@ static void initHardware(void)  {
 	Board_Init();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock / MILISEC);		//systick 1ms
+
+	/*
+	 * Se congifura la tecla 1 con flanco de desendente para la interrupcion 0
+	 * */
+	Chip_SCU_GPIOIntPinSel( 0, TEC1_PORT, TEC1_BIT );
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 0 ) ); // INT0
+	Chip_PININT_SetPinModeEdge( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
+	Chip_PININT_EnableIntLow( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
+
+	/*
+	 * Se congifura la tecla 2 con flanco de desendente para la interrupcion 1
+	 * */
+	Chip_SCU_GPIOIntPinSel( 1, TEC2_PORT, TEC2_BIT );
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 1 ) ); // INT1
+	Chip_PININT_SetPinModeEdge( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
+	Chip_PININT_EnableIntLow( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
+
+	uartConfig( UART_USB, 115200 );
 }
 
 
@@ -55,110 +77,76 @@ static void initHardware(void)  {
 
 //id = 0
 void task1(void)  {
-	userData data;
+	char msg[20];
+	int i = 0;
+
+	strcpy(msg,"Se presionó T1\n\r");
+
 	while (1) {
-		osGetQueue(&queue1,&data);
-		gpioWrite(LED1,true); // @suppress("Symbol is not resolved")
-		osDelay(200);
-		gpioWrite(LED1,false); // @suppress("Symbol is not resolved")
-		osDelay(200);
-		memset(&data,0x00,sizeof(userData));
+		osTakeSemaphore(&sem1);
+		for(int i = 0; i < nBLINK; i++)
+		{
+			gpioWrite(LED1,true); // @suppress("Symbol is not resolved")
+			osDelay(100);
+			gpioWrite(LED1,false); // @suppress("Symbol is not resolved")
+			osDelay(100);
+		}
+
+		i = 0;
+		while(msg[i] != NULL)  {
+			osPutQueue(&queueUart,(msg + i));
+			i++;
+		}
 	}
 }
 
 //id = 1
 void task2(void)  {
-	userData data;
+	char msg[20];
+	int j = 0;
+
+	strcpy(msg,"Se presionó T2\n\r");
+
 	while (1) {
-		osGetQueue(&queue2,&data);
-		gpioWrite(LED2,true); // @suppress("Symbol is not resolved")
-		osDelay(200);
-		gpioWrite(LED2,false); // @suppress("Symbol is not resolved")
-		osDelay(200);
-		memset(&data,0x00,sizeof(userData));
+		osTakeSemaphore(&sem2);
+		for(int j = 0; j < nBLINK; j++)
+		{
+			gpioWrite(LED2,true); // @suppress("Symbol is not resolved")
+			osDelay(100);
+			gpioWrite(LED2,false); // @suppress("Symbol is not resolved")
+			osDelay(100);
+		}
+
+		j = 0;
+		while(msg[j] != NULL)  {
+			osPutQueue(&queueUart,(msg + j));
+			j++;
+		}
 	}
 }
 
 //id = 2
 void task3(void)  {
-	userData data;
-	while (1) {
-		osGetQueue(&queue2,&data);
-		gpioWrite(LED3,true); // @suppress("Symbol is not resolved")
-		osDelay(200);
-		gpioWrite(LED3,false); // @suppress("Symbol is not resolved")
-		osDelay(200);
-		memset(&data,0x00,sizeof(userData));
-	}
-}
-
-//id = 3
-void task4(void)  {
-	userData data;
-	while (1) {
-		if(!gpioRead(TEC1)) // @suppress("Symbol is not resolved")
-		{
-			data.nFloat = 0.4444;
-			data.nInt = 4;
-			data.nVector[0] = 4;
-			data.nVector[0] = 5;
-			data.nVector[0] = 6;
-			data.nVector[0] = 7;
-			osPutQueue(&queue1, &data);
-		}
-		osDelay(100);
-	}
-}
-
-//id = 4
-void task5(void)  {
-	userData data;
-	while (1) {
-		if(!gpioRead(TEC2)) // @suppress("Symbol is not resolved")
-		{
-			data.nFloat = 0.5555;
-			data.nInt = 5;
-			data.nVector[0] = 5;
-			data.nVector[0] = 6;
-			data.nVector[0] = 7;
-			data.nVector[0] = 8;
-			osPutQueue(&queue2, &data);
-		}
-		osDelay(50);
-	}
-}
-
-//id = 5
-void task6(void)  {
-	userData data;
-	while (1) {
-		if(!gpioRead(TEC3)) // @suppress("Symbol is not resolved")
-		{
-			data.nFloat = 0.6666;
-			data.nInt = 6;
-			data.nVector[0] = 6;
-			data.nVector[0] = 7;
-			data.nVector[0] = 8;
-			data.nVector[0] = 9;
-			osPutQueue(&queue3, &data);
-		}
-		osDelay(50);
+	char ch;
+	while(1)  {
+		osGetQueue(&queueUart,&ch);
+		//uartWriteByte(UART_USB,ch);
 	}
 }
 
 /*============================================================================*/
 /*
- * Descripción de la prueba de Colas
+ * Descripción de la prueba de Interrupciones
  *
- * Se crea 6 tareas en total, las tareas 1,2,3 son de la mayor prioridad (prioridad 0), realizan la lectura de las colas y manejan
- * el parpadeo de los led de la eduCIAA correspondiente al número de los LED
+ * Se configura dos interupciones asociadas a la INT0 e INT1 de cambio de estado de pines en flanco desendente
+ * El pulsador T1 se lo asocia con la interrupcion INT0 y el pulsador T2 se lo asocia con la INT1
  *
- * Las tareas 4,5,6 de prioridad 1 manejan los pulsadores de usuario TEC1, TEC2 y TEC3 respectivamente y realizan la escritura de
- * datos sobre las colas respectivamante
+ * Se crea 3 tareas en total, las tareas 1,2 son de la mayor prioridad (prioridad 0), manejan
+ * el parpadeo de los led de la eduCIAA correspondiente al número de los LED y escriben un mensaje a la
+ * cola de usart dependiendo de que tarea se ejecute.
  *
- * la tarea 4 hace escritura sobre la cola1 (queue1) y la tarea 0 realiza la lectura de la cola1 (queue1)
- * la tarea 5 hace escritura sobre la cola2 (queue2) y la tarea 1 realiza la lectura de la cola2 (queue2)
- * la tarea 6 hace escritura sobre la cola3 (queue3) y la tarea 2 realiza la lectura de la cola3 (queue3)
+ * Las tarea 3 de prioridad 1 maneja la escritura sobre el periférico del uart esperando datos de la cola
+ * queueUart que se escriben en la tarea 1 y 2
  *
  * */
 
@@ -168,18 +156,29 @@ int main(void)  {
 
 	osInitTask(task1, &g_task1, PRIORITY_0);
 	osInitTask(task2, &g_task2, PRIORITY_0);
-	osInitTask(task3, &g_task3, PRIORITY_0);
-	osInitTask(task4, &g_task4, PRIORITY_1);
-	osInitTask(task5, &g_task5, PRIORITY_1);
-	osInitTask(task6, &g_task6, PRIORITY_1);
+	osInitTask(task3, &g_task3, PRIORITY_1);
 
-	osInitQueue(&queue1,sizeof(userData));
-	osInitQueue(&queue2,sizeof(userData));
-	osInitQueue(&queue3,sizeof(userData));
+	osInitSemaphore(&sem1);
+	osInitSemaphore(&sem2);
+
+	osInitQueue(&queueUart,sizeof(char));
+
+	osInstallIRQ(PIN_INT0_IRQn,t1_ISR);
+	osInstallIRQ(PIN_INT1_IRQn,t2_ISR);
 
 	osInit();
 
 	while (1) {}
+}
+
+void t1_ISR(void) {
+	osGiveSemaphore(&sem1);
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
+}
+
+void t2_ISR(void)  {
+	osGiveSemaphore(&sem2);
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
 }
 
 /** @} doxygen end group definition */

@@ -81,7 +81,8 @@
 enum _osState {
 	NORMAL_RUN,
 	FROM_RESET,
-	SCHEDULING
+	SCHEDULING,
+	RUN_IRQ
 };
 
 typedef enum _osState osState;
@@ -144,6 +145,8 @@ struct _osCrt{
 										   *Cada campo del vector representa una prioridad
 										   */
 	uint8_t countCritical;
+
+	bool schedulingFromIRQ;
 };
 
 typedef struct _osCrt osCrt;
@@ -158,5 +161,11 @@ void osForceSchCC(void);
 
 void osEnterCritical(void);
 void osExitCritical(void);
+
+osState osGetSytemState(void);
+void osSetSytemState(osState state);
+
+void osSetScheduleFromISR(bool value);
+bool osGetScheduleFromISR(void);
 
 #endif /* JAMMOS_H_ */
