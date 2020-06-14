@@ -1,7 +1,7 @@
 /*
  * JAMMOS_API.c
  *
- *  Created on: 10 jun. 2020
+ *  Created on: 14 jun. 2020
  *      Author: jamm
  */
 
@@ -104,7 +104,7 @@ void osGiveSemaphore(semaphore *sem)
      *   llamando luego a la función que realiza el scheduler y el llamado a
      *   contexto si se necesita.
      *
-	 *  @param semáforo que se toma
+	 *  @param sem semáforo que se toma
 	 *  @return none.
 ***************************************************************************************************/
 void osTakeSemaphore(semaphore *sem)
@@ -128,6 +128,176 @@ void osTakeSemaphore(semaphore *sem)
 			sem->state = TAKEN;
 			isTaken = false;
 		}
+	}
+}
+
+/*************************************************************************************************
+	 *  @brief función de inicialicación de una cola
+     *
+     *  @details
+     *   Esta función inicializa el cola con la tarea asociada igual a null y el tamaño del
+     *   elemento que se va a transmitir
+     *
+     *   Inicializa los indices a cero y determina el tamaño del dato que va a enviar
+     *
+	 *  @param que, cola que se va a inicializar
+	 *  @param size, Tamaño del elemento o estructura que se enviaran por la cola
+	 *  @return none.
+***************************************************************************************************/
+void osInitQueue(queue *que, uint16_t size)
+{
+	que->size = size;
+	que->head = 0;
+	que->tail = 0;
+	que->queueTask = NULL;
+}
+
+/*************************************************************************************************
+	 *  @brief función de que pone datos sobre una cola
+     *
+     *  @details
+     *   Esta función realiza una copia en el vector de la cola los datos del puntero data
+     *   que entra como parametro
+     *
+     *
+	 *  @param cola donde se va a escribir
+	 *  @param data, puntero de los datos a enviar
+	 *  @return none.
+***************************************************************************************************/
+void osPutQueue(queue *que, void* data)
+{
+	task* currentTask;
+	uint16_t elements;
+	uint16_t indexHead;
+	/*
+	 * Verifica que la cola no este vacia
+	 * */
+	if(que->head == que->tail)
+	{
+		/*
+		 * Verifica que la cola tenga una tarea asociada
+		 * */
+		if(que->queueTask != NULL)
+		{
+			/*
+			 * Verifica que la tarea esté bloaqueda, en el caso de que
+			 * se bloqueo por algùn motivo se cambia a estado ready, porque
+			 * se escribira un dato en esa tarea
+			 * */
+			if(que->queueTask->state == BLOCKED)
+				que->queueTask->state = READY;
+		}
+	}
+	/*
+	 * Obtengo el puntero de la tarea actual
+	 * */
+	currentTask = getCurrentTask();
+	/*
+	 * Verifico que la tarea actual se esta ejecutando para realizar la copia
+	 * de los datos ingresados en la cola
+	 * */
+	if(currentTask->state == RUNNING)
+	{
+		elements = QUEUE_SIZE/que->size;
+		indexHead = que->head * que->size;
+		/*
+		 * Se verifica que la cola tenga espacio para incluir los datos
+		 * si no tiene el while bloquea la tarea actual y se forza a un
+		 * scheuler y cambio de contexto hasta que cumpla con la
+		 * condicion de tener lugar disponible
+		 * */
+		while((que->head + 1) % elements == que->tail)
+		{
+			currentTask->state = BLOCKED;
+			que->queueTask = currentTask;
+			osForceSchCC();
+		}
+		/*
+		 * Se realiza una copia de los datos en el vector de la pila en la posición del índice head
+		 * */
+		memcpy(que->data + indexHead,data,que->size);
+		/*
+		 * Se desasocia la tarea de la cola
+		 * */
+		que->head = (que->head + 1) % elements;
+		que->queueTask = NULL;
+	}
+}
+
+/*************************************************************************************************
+	 *  @brief función obtiene los datos de la cola
+     *
+     *  @details
+     *   Esta función realiza una copia en el  puntero data
+     *   que entra como parametro del vector de la cola
+     *
+     *
+	 *  @param cola de donde se va a leer
+	 *  @param data, puntero de los datos a escribir
+	 *  @return none.
+***************************************************************************************************/
+void osGetQueue(queue *que, void* data)
+{
+	task* currentTask;
+	uint16_t elements;
+	uint16_t indexTail;
+
+	elements = QUEUE_SIZE / que->size;
+	/*
+	 * Se verifica que la cola esté llena
+	 * */
+	if((que->head + 1) % elements == que->tail)
+	{
+		/*
+		 * Verifica que la cola tenga una tarea asociada
+		 * */
+		if(que->queueTask != NULL)
+		{
+			/*
+			 * Verifica que la tarea esté bloaqueda, en el caso de que
+			 * se bloqueo por algùn motivo se cambia a estado ready, porque
+			 * se leerá un dato en esa tarea
+			 * */
+			if(que->queueTask->state == BLOCKED)
+				que->queueTask->state = READY;
+		}
+	}
+	/*
+	 * Obtengo el puntero de la tarea actual
+	 * */
+	currentTask = getCurrentTask();
+	/*
+	 * Verifico que la tarea actual se esta ejecutando para realizar la copia
+	 * de los datos ingresados en la cola
+	 * */
+	if(currentTask->state == RUNNING)
+	{
+		indexTail = que->tail * que->size;
+		/*
+		 * Se verifica que la cola tenga datos por lees
+		 * si no tiene datos por leer el while bloquea la tarea actual y
+		 * se forza a un scheuler y cambio de contexto hasta que cumpla
+		 * con la condicion de tener datos por leer
+		 * */
+		while(que->head == que->tail)
+		{
+			currentTask->state = BLOCKED;
+			que->queueTask = currentTask;
+			osForceSchCC();
+		}
+		/*
+		 * Se realiza una copia vector de la pila al elemento que entra
+		 * como parametro de los datos en el en la posición del índice Tail
+		 * */
+		memcpy(data,que->data + indexTail,que->size);
+		/*
+		 * Se actualiza el índice Head
+		 * */
+		que->tail = (que->tail + 1) % elements;
+		/*
+		 * Se desasocia la tarea de la cola
+		 * */
+		que->queueTask = NULL;
 	}
 }
 
