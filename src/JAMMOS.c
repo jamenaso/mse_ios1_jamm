@@ -109,6 +109,40 @@ void __attribute__((weak)) idleTask(void)  {
 }
 
 /*************************************************************************************************
+	 *  @brief Inicio de una sección crìtica.
+     *
+     *  @details
+     *  Función que desabilita las interrupciones en alguna sección del código que sea atómica
+     *  quiere decir que no se relice llamado al scheduler y  un cambio de contexto porque posiblemente
+     *  hay cambios sobre esa sección
+     *
+	 *  @param 		None
+	 *  @return     None
+***************************************************************************************************/
+inline void osEnterCritical(void)  {
+	__disable_irq();
+	crt_OS.countCritical++;
+}
+
+
+/*************************************************************************************************
+	 *  @brief Final de una sección crìtica.
+     *
+     *  @details
+     *  Función que habilita las interrupciones en alguna sección del código que sea atómica
+     *  Verifica que el contador sea mayor o igual que cero.
+     *
+	 *  @param 		None
+	 *  @return     None
+***************************************************************************************************/
+inline void osExitCritical(void)  {
+	if (--crt_OS.countCritical <= 0)  {
+		crt_OS.countCritical = 0;
+		__enable_irq();
+	}
+}
+
+/*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
      *
      *  @details
@@ -281,6 +315,7 @@ void osInit(void) {
 	 */
 	crt_OS.state = FROM_RESET;
 	crt_OS.current_task = NULL;
+	crt_OS.countCritical = 0;
 	crt_OS.next_task = NULL;
 
 	/*

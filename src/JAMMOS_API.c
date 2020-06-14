@@ -26,22 +26,25 @@ void osDelay(uint32_t ticks)
 	 * */
 	if(ticks > 0)
 	{
+		osEnterCritical();
 		/*
 		 * Obtiene la tarea actual que tiene el control del sistema
 		 * se utiliza una función getCurrentTask
 		 * */
 		currentTask = getCurrentTask();
 		/*
+		 * linea que configura los tickstimer de la tarea actual con el
+		 * valor ingresado por el parametro proveniente desde la tarea
+		 * */
+		currentTask->ticksWaiting = ticks;
+
+		osExitCritical();
+		/*
 		 * Se verifica que el estado de la tarea actual esté conrriendo para
 		 * poder ser bloqueda, en caso distinto no se realiza nada
 		 * */
 		if(currentTask->state == RUNNING)
 		{
-			/*
-			 * linea que configura los tickstimer de la tarea actual con el
-			 * valor ingresado por el parametro proveniente desde la tarea
-			 * */
-			currentTask->ticksWaiting = ticks;
 			/*
 			 * Si por algún motivo el contro del cpu vuelve a la tarea se verifica que
 			 * los ticks del timer aun no han espirado y vuelve a bloaquear la tarea y
@@ -86,12 +89,14 @@ void osGiveSemaphore(semaphore *sem)
 	task* currentTask;
 	if(sem->semaphoreTask != NULL && sem->state == TAKEN)
 	{
+		osEnterCritical();
 		currentTask = getCurrentTask();
 		if(currentTask->state == RUNNING)
 		{
 			sem->state = RELEASED;
 			sem->semaphoreTask = READY;
 		}
+		osExitCritical();
 	}
 }
 
@@ -119,8 +124,10 @@ void osTakeSemaphore(semaphore *sem)
 	{
 		if(sem->state == TAKEN)
 		{
+			osEnterCritical();
 			sem->semaphoreTask = getCurrentTask();
 			sem->semaphoreTask->state = BLOCKED;
+			osExitCritical();
 			osForceSchCC();
 		}
 		else
@@ -188,10 +195,12 @@ void osPutQueue(queue *que, void* data)
 				que->queueTask->state = READY;
 		}
 	}
+	osEnterCritical();
 	/*
 	 * Obtengo el puntero de la tarea actual
 	 * */
 	currentTask = getCurrentTask();
+	osExitCritical();
 	/*
 	 * Verifico que la tarea actual se esta ejecutando para realizar la copia
 	 * de los datos ingresados en la cola
@@ -208,8 +217,10 @@ void osPutQueue(queue *que, void* data)
 		 * */
 		while((que->head + 1) % elements == que->tail)
 		{
+			osEnterCritical();
 			currentTask->state = BLOCKED;
 			que->queueTask = currentTask;
+			osExitCritical();
 			osForceSchCC();
 		}
 		/*
@@ -262,10 +273,12 @@ void osGetQueue(queue *que, void* data)
 				que->queueTask->state = READY;
 		}
 	}
+	osEnterCritical();
 	/*
 	 * Obtengo el puntero de la tarea actual
 	 * */
 	currentTask = getCurrentTask();
+	osExitCritical();
 	/*
 	 * Verifico que la tarea actual se esta ejecutando para realizar la copia
 	 * de los datos ingresados en la cola
@@ -281,7 +294,9 @@ void osGetQueue(queue *que, void* data)
 		 * */
 		while(que->head == que->tail)
 		{
+			osEnterCritical();
 			currentTask->state = BLOCKED;
+			osExitCritical();
 			que->queueTask = currentTask;
 			osForceSchCC();
 		}

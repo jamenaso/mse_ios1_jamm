@@ -143,6 +143,7 @@ struct _osCrt{
 	uint8_t countPriority[PRIORITY_SIZE]; /*Vector que contiene el número de tareas con las misma prioridad
 										   *Cada campo del vector representa una prioridad
 										   */
+	uint8_t countCritical;
 };
 
 typedef struct _osCrt osCrt;
@@ -154,5 +155,8 @@ void osInit(void);
 int32_t os_getError(void);
 task* getCurrentTask(void);
 void osForceSchCC(void);
+
+void osEnterCritical(void);
+void osExitCritical(void);
 
 #endif /* JAMMOS_H_ */
