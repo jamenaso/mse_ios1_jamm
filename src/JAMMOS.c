@@ -469,11 +469,12 @@ task* getCurrentTask(void)
 }
 
 /*************************************************************************************************
-	 *  @brief Llama al scheduler y a cambio de contexto si es necesario
+	 *  @brief Forzado de Scheduling (Llama al scheduler y a cambio de contexto si es necesario)
      *
      *  @details
      *  Función que llama al scheuler y al cambio de contexto si es necesario
-     *  en la función delay se llama para no se tenga que espera a la próxima llamada del stick
+     *  llama a la funcion scheuler y reviza la bandera de cambio de contexto y llama a la
+     *  interupcion PENDSVSET para realizar cambio de contexto si es necesario.
      *
 	 *  @param 		None
 	 *  @return     None.
