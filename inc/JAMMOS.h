@@ -116,7 +116,6 @@ struct _task{
 	 	 	 	 	 	 	 * se llama a la función osDelay
 	 	 	 	 	 	 	 */
 };
-
 typedef struct _task task;
 
 /************************************************************************************

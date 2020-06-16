@@ -8,9 +8,12 @@
 #include "sapi.h"
 #include <string.h>
 
+
 /*==================[macros and definitions]=================================*/
 
 #define MILISEC		1000
+
+#define MAX_MSG_LENGTH 250
 
 /*==================[Declaracion de prioridades]==============================*/
 
@@ -29,11 +32,67 @@
 
 #define nBLINK	10
 
-task g_task1,g_task2,g_task3,g_task4; //Se declaran 8 tareas
-task g_task5,g_task6,g_task7,g_task8;
+task g_taskFallingEdge,g_taskRisingEdge, g_taskEvent,g_taskSendUart; //Se declaran tareas
 
-semaphore sem1, sem2;
-queue queueUart, timeBlinkTask4, timeBlinkTask5, timeBlinkTask6, timeBlinkTask7;
+queue queueButtonFallingEdge, queueButtonRisingEdge, queueEvent, queueUart; //Se declaran Colas
+
+uint32_t timeMseconds; //Variable de tiempo que se incrementa en cada tickHook renombrada por el usuario
+
+/*
+ * Tipo de dato de id del botón que tiene la información del botón que tuvo evento
+ * */
+
+enum _buttonId {
+	B1,
+	B2
+};
+typedef enum _buttonId buttonId;
+
+/*
+ * Modo de flanco, tienen dos modos flanco ascendente y flaco descendente
+ * */
+
+enum _modeEdge {
+	RISING_EDGE,
+	FALLING_EDGE
+};
+typedef enum _modeEdge modeEdge;
+
+/*
+ * Definición del tipo de dato button que es una estructura que tiene el Id de identificación del
+ * botón el tiempo en que ha tenido el último evento y guarda el modo de flanco del último evento
+ */
+
+struct _button{
+	buttonId id;
+	uint32_t time;
+	modeEdge mEdge;
+};
+typedef struct _button button;
+
+/*
+ * Definición de dato que guarda la información del modo de evento que consiste en orden de ejecución de los botónes
+ * Ejemplo: B1_B2 ocurrió primero botón 1 y después el botón 2
+ */
+
+enum _modeEvent {
+	B1_B2,
+	B2_B1,
+	INVALID
+};
+typedef enum _modeEvent modeEvent;
+
+/*
+ * Definición del tipo de dato envento que es una estructura que tiene el modo de evento, el modo de flanco y el
+ * tiempo en que trancurrieron los eventos de los botones
+ */
+
+struct _event{
+	modeEvent mEvent;
+	modeEdge mEdge;
+	uint32_t time;
+};
+typedef struct _event event;
 
 /*==================[internal functions declaration]=========================*/
 
@@ -43,9 +102,15 @@ queue queueUart, timeBlinkTask4, timeBlinkTask5, timeBlinkTask6, timeBlinkTask7;
 
 /*==================[internal functions definition]==========================*/
 
-void t1_ISR(void);
-void t2_ISR(void);
+/*
+ * Se declaran cuatro funciones de interrupción botón 1 flanco descendente, botón 1 flanco ascendente
+ * botón 2 flanco descendente y botón 2 flanco ascendente.
+ * */
 
+void b1_low_ISR(void);
+void b1_high_ISR(void);
+void b2_low_ISR(void);
+void b2_high_ISR(void);
 
 /** @brief hardware initialization function
  *	@return none
@@ -56,20 +121,36 @@ static void initHardware(void)  {
 	SysTick_Config(SystemCoreClock / MILISEC);		//systick 1ms
 
 	/*
-	 * Se congifura la tecla 1 con flanco de desendente para la interrupcion 0
-	 * */
+	 * Se configura la interrupcion 0 para el flanco descendente en la tecla 1
+	 */
 	Chip_SCU_GPIOIntPinSel( 0, TEC1_PORT, TEC1_BIT );
-	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 0 ) ); // INT0
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 0 ) ); // INT0 flanco descendente
 	Chip_PININT_SetPinModeEdge( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
 	Chip_PININT_EnableIntLow( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
 
 	/*
-	 * Se congifura la tecla 2 con flanco de desendente para la interrupcion 1
-	 * */
-	Chip_SCU_GPIOIntPinSel( 1, TEC2_PORT, TEC2_BIT );
-	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 1 ) ); // INT1
+	 * Se configura la interrupcion 1 para el flanco ascendente en la tecla 1
+	 */
+	Chip_SCU_GPIOIntPinSel( 1, TEC1_PORT, TEC1_BIT );
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 1 ) ); // INT1 flanco ascendente
 	Chip_PININT_SetPinModeEdge( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
-	Chip_PININT_EnableIntLow( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
+	Chip_PININT_EnableIntHigh( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
+
+	/*
+	 * Se configura la interrupcion 0 para el flanco descendente en la tecla 1
+	 */
+	Chip_SCU_GPIOIntPinSel( 2, TEC2_PORT, TEC2_BIT );
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 2 ) ); // INT0 flanco descendente
+	Chip_PININT_SetPinModeEdge( LPC_GPIO_PIN_INT, PININTCH( 2 ) );
+	Chip_PININT_EnableIntLow( LPC_GPIO_PIN_INT, PININTCH( 2 ) );
+
+	/*
+	 * Se configura la interrupcion 1 para el flanco ascendente en la tecla 1
+	 */
+	Chip_SCU_GPIOIntPinSel( 3, TEC2_PORT, TEC2_BIT );
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 3 ) ); // INT1 flanco ascendente
+	Chip_PININT_SetPinModeEdge( LPC_GPIO_PIN_INT, PININTCH( 3 ) );
+	Chip_PININT_EnableIntHigh( LPC_GPIO_PIN_INT, PININTCH( 3 ) );
 
 	uartConfig( UART_USB, 115200 );
 }
@@ -77,58 +158,197 @@ static void initHardware(void)  {
 
 /*==================[Definicion de tareas para el OS]==========================*/
 
-//id = 0
-void task1(void)  {
-	char msg[20];
-	uint8_t i = 0;
-
-	strcpy(msg,"Se presionó T1\n\r");
+/*
+ * En esta tarea espera un dato de la cola queueButtonFallingEdge proveniente de las interrupciones
+ * de flanco descendiente b1_low_ISR y b2_low_ISR.
+ *
+ * Cuando se ha realizado dos pulsaciones de flanco descendiente de los botones verifica si los dos flancos
+ * son descendientes, verifica el orden de pulsación para configurar la variable modo del Evento (ev.mEvent)
+ * y asigna el tiempo entre pulsaciónes de los botones. Si el evento es válido envía la información del evento a
+ * la tarea taskEvent por medio de la cola queueEvent
+ * */
+void taskFallingEdge(void)  {
+	button btn, btnPrevious;
+	uint8_t nBtn = 0;
+	event ev;
 
 	while (1) {
-		osTakeSemaphore(&sem1);
-		for(i = 0; i < nBLINK; i++)
+		osGetQueue(&queueButtonFallingEdge,&btn);
+		if(nBtn == 0)
 		{
-			gpioWrite(LED1,true); // @suppress("Symbol is not resolved")
-			osDelay(100);
-			gpioWrite(LED1,false); // @suppress("Symbol is not resolved")
-			osDelay(100);
+			btnPrevious.id = btn.id;
+			btnPrevious.mEdge = btn.mEdge;
+			btnPrevious.time = btn.time;
+			nBtn++;
 		}
-
-		i = 0;
-		while(msg[i] != 0)  {
-			osPutQueue(&queueUart,(msg + i));
-			i++;
+		else
+		{
+			if(btnPrevious.mEdge == FALLING_EDGE && btn.mEdge == FALLING_EDGE)
+			{
+				ev.mEdge = FALLING_EDGE;
+				if(btnPrevious.id == B1 && btn.id == B2)
+				{
+					ev.mEvent = B1_B2;
+					ev.time = btn.time - btnPrevious.time;
+				}
+				else if(btnPrevious.id == B2 && btn.id == B1)
+				{
+					ev.mEvent = B2_B1;
+					ev.time = btn.time - btnPrevious.time;
+				}
+				else
+				{
+					ev.mEvent = INVALID;
+					ev.time = 0;
+				}
+				if(ev.mEvent != INVALID)
+					osPutQueue(&queueEvent,&ev);
+			}
+			nBtn = 0;
 		}
 	}
 }
 
-//id = 1
-void task2(void)  {
-	char msg[20];
-	uint8_t j = 0;
-
-	strcpy(msg,"Se presionó T2\n\r");
+/*
+ * En esta tarea espera un dato de la cola queueButtonRisingEdge proveniente de las interrupciones
+ * de flanco ascendente b1_high_ISR y b2_high_ISR.
+ *
+ * Cuando se ha realizado dos pulsaciones de flanco ascendente de los botones verifica si los dos flancos
+ * son ascendentes, verifica el orden de pulsación para configurar la variable modo del Evento (ev.mEvent)
+ * y asigna el tiempo entre pulsaciónes de los botones. Si el evento es válido envía la información del evento a
+ * la tarea taskEvent por medio de la cola queueEvent
+ * */
+void taskRisingEdge(void)  {
+	button btn, btnPrevious;
+	uint8_t nBtn = 0;
+	event ev;
 
 	while (1) {
-		osTakeSemaphore(&sem2);
-		for(j = 0; j < nBLINK; j++)
+		osGetQueue(&queueButtonRisingEdge,&btn);
+		if(nBtn == 0)
 		{
-			gpioWrite(LED2,true); // @suppress("Symbol is not resolved")
-			osDelay(100);
-			gpioWrite(LED2,false); // @suppress("Symbol is not resolved")
-			osDelay(100);
+			btnPrevious.id = btn.id;
+			btnPrevious.mEdge = btn.mEdge;
+			btnPrevious.time = btn.time;
+			nBtn++;
 		}
+		else
+		{
+			if(btnPrevious.mEdge == RISING_EDGE && btn.mEdge == RISING_EDGE)
+			{
+				ev.mEdge = RISING_EDGE;
+				if(btnPrevious.id == B1 && btn.id == B2)
+				{
+					ev.mEvent = B1_B2;
+					ev.time = btn.time - btnPrevious.time;
+				}
+				else if(btnPrevious.id == B2 && btn.id == B1)
+				{
+					ev.mEvent = B2_B1;
+					ev.time = btn.time - btnPrevious.time;
+				}
+				else
+				{
+					ev.mEvent = INVALID;
+					ev.time = 0;
+				}
+				if(ev.mEvent != INVALID)
+					osPutQueue(&queueEvent,&ev);
+			}
+			nBtn = 0;
+		}
+	}
+}
+/*
+ * Esta tarea recibe de las tareas taskFallingEdge y taskRisingEdge eventos producidos por los botones y su órden de ejecución.
+ * Cuando recibe dos eventos verifica que el orden del evento anterior y el evento actual estén en la correcta secuencia.
+ * primero de flanco Descendente y después de flanco Ascendente.
+ *
+ * Verifica el modo de los eventos para determinar el orden de ejecución de los botones en cada uno de los flancos
+ * y dependiendo de eso prende el respectivo color del LED RGB y asigna al tiempo de encendido la suma de los tiempo los
+ * eventos anterior y actual.
+ *
+ * Guarda en una cadena de caracteres dependiendo de los ordenes expuestos anteriormente y arma el string del mensaje
+ * para después ser enviados a la tarea taskSendUart por medio de la cola queueUart que escribe por el usart cada caracter
+ * que detecta en la lectura de la cola.
+ *
+ * */
+void taskEvent(void)  {
+	event ev, evPrevious;
+	uint8_t nEv = 0;
+	uint32_t tTotal = 0;
+	char message[MAX_MSG_LENGTH];
+	char msgColor[10];
+	uint16_t msgIndex = 0;
 
-		j = 0;
-		while(msg[j] != 0)  {
-			osPutQueue(&queueUart,(msg + j));
-			j++;
+
+	while(1)  {
+		osGetQueue(&queueEvent,&ev);
+		if(nEv == 0)
+		{
+			evPrevious.mEdge = ev.mEdge;
+			evPrevious.mEvent = ev.mEvent;
+			evPrevious.time = ev.time;
+			nEv++;
+		}
+		else
+		{
+			if(evPrevious.mEdge == FALLING_EDGE && ev.mEdge == RISING_EDGE)
+			{
+				tTotal = evPrevious.time + ev.time;
+
+				if(evPrevious.mEvent == B1_B2 && ev.mEvent == B1_B2)
+				{
+					gpioWrite(LEDG,true);
+					osDelay(tTotal);
+					gpioWrite(LEDG,false);
+					strcpy( msgColor, "Verde" );
+				}
+
+				if(evPrevious.mEvent == B1_B2 && ev.mEvent == B2_B1)
+				{
+					gpioWrite(LEDR,true);
+					osDelay(tTotal);
+					gpioWrite(LEDR,false);
+					strcpy( msgColor, "Rojo" );
+				}
+
+				if(evPrevious.mEvent == B2_B1 && ev.mEvent == B1_B2)
+				{
+					gpioWrite(LEDR,true);
+					gpioWrite(LEDG,true);
+					osDelay(tTotal);
+					gpioWrite(LEDR,false);
+					gpioWrite(LEDG,false);
+					strcpy( msgColor, "Amarillo" );
+				}
+
+				if(evPrevious.mEvent == B2_B1 && ev.mEvent == B2_B1)
+				{
+					gpioWrite(LEDB,true);
+					osDelay(tTotal);
+					gpioWrite(LEDB,false);
+					strcpy( msgColor, "Azúl" );
+				}
+
+				sprintf( message, "Led %s encendido:\n\r\t Tiempo encendido: %lu ms\n\r\t Tiempo entre flancos descendentes: %lu ms \n\r\t Tiempo entre flancos ascendentes: %lu ms \n\r", msgColor, tTotal, evPrevious.time,ev.time );
+
+				msgIndex = 0;
+				while(message[msgIndex] != NULL)  {
+					osPutQueue(&queueUart,(message + msgIndex));
+					msgIndex++;
+				}
+			}
+			nEv = 0;
 		}
 	}
 }
 
-//id = 2
-void task3(void)  {
+/*
+ * Tarea que recibe cada caracter proveniente de la tarea taskEvent para ser escrita al buffer del Usart
+ *
+ * */
+void taskSendUart(void)  {
 	char ch;
 	while(1)  {
 		osGetQueue(&queueUart,&ch);
@@ -136,169 +356,96 @@ void task3(void)  {
 	}
 }
 
-void task4(void)  {
-	uint32_t tBlink = 0;
-	uint8_t k = 0;
-	while(1)  {
-		osGetQueue(&timeBlinkTask4,&tBlink);
-		for(k = 0; k < nBLINK; k++)
-		{
-			gpioWrite(LED3,true); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-			gpioWrite(LED3,false); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-		}
-	}
-}
+/**
+ * Redefinición de la función hook que se llama en el sistick que lleva la temporizacio de cuantos milisegundo transcurren
+ *
+ */
 
-void task5(void)  {
-	uint32_t tBlink = 0;
-	uint8_t l = 0;
-	while(1)  {
-		osGetQueue(&timeBlinkTask5,&tBlink);
-		for(l = 0; l < nBLINK; l++)
-		{
-			gpioWrite(LED3,true); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-			gpioWrite(LED3,false); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-		}
-	}
-}
-
-void task6(void)  {
-	uint32_t tBlink = 0;
-	uint8_t m = 0;
-	while(1)  {
-		osGetQueue(&timeBlinkTask6,&tBlink);
-		for(m = 0; m < nBLINK; m++)
-		{
-			gpioWrite(LED3,true); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-			gpioWrite(LED3,false); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-		}
-	}
-}
-
-void task7(void)  {
-	uint32_t tBlink = 0;
-	uint8_t n = 0;
-	while(1)  {
-		osGetQueue(&timeBlinkTask7,&tBlink);
-		for(n = 0; n < nBLINK; n++)
-		{
-			gpioWrite(LED3,true); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-			gpioWrite(LED3,false); // @suppress("Symbol is not resolved")
-			osDelay(tBlink);
-		}
-	}
-}
-
-void task8(void)  {
-	uint16_t countTask = 0;
-	uint32_t timeBlink = 1;
-	while(1)  {
-		if(!gpioRead( TEC3 ))  {
-
-			switch (countTask){
-				case 0:
-					osPutQueue(&timeBlinkTask4,100 * timeBlink);
-				break;
-				case 1:
-					osPutQueue(&timeBlinkTask5,100 * timeBlink);
-				break;
-				case 2:
-					osPutQueue(&timeBlinkTask6,100 * timeBlink);
-				break;
-				case 3:
-					osPutQueue(&timeBlinkTask7,100 * timeBlink);
-				break;
-				default:
-				break;
-			}
-			countTask++;
-			if(countTask >= 4)
-				countTask = 0;
-
-			timeBlink++;
-			if(timeBlink >= 10)
-				timeBlink = 0;
-		}
-		osDelay(200);
-	}
+void tickHook(void)
+{
+	timeMseconds++;
 }
 
 /*============================================================================*/
 /*
- * Descripción de la del sistema operativo JAMMOS en general
+ * Descripción de la prueba para examen de la materia ISO1 con el sistema operativo JAMMOS
  *
- * Se configura dos interrupciones asociadas a la INT0 e INT1 de cambio de estado de pines en flanco descendente
- * El pulsador T1 se lo asocia con la interrupción INT0 y el pulsador T2 se lo asocia con la INT1
- *
- * Se crea 8 tareas en total, las tareas 1,2 son de la mayor prioridad (prioridad 0), manejan
- * el parpadeo de los led de la eduCIAA correspondiente al número de los LED1 y LED2 respectivamente, luego escriben un mensaje a la
- * cola de usart dependiendo de que tarea se ejecute.
- *
- * Las tarea 3 de prioridad 1 maneja la escritura sobre el periférico del uart esperando datos de la cola
- * queueUart que se escriben en la tarea 1 y 2.
- *
- * Las tareas 4, 5, 6 y 7 son tareas de prioridad 2 estan esperando datos de las colas correspondientes a la timeBlinkTask4,
- * timeBlinkTask5, timeBlinkTask6 y timeBlinkTask7.
- *
- * la tarea 8 de más baja prioridad (prioridad 3) simplemente realiza la lectura del estado del T3 y verifica el contador countTask.
- * Dependiendo del valor del contador envia datos a determinada cola para que se ejecuten las tareas de mas alta prioridad 4, 5, 6 y 7
- *
- * El valor que se envian por las colas representan el tiempo de parpadeo del LED3 en las tareas 4,5,6 y 7. Mientras tanto no se estén
- * ejecutando las tareas de mayor prioridad.
- *
- * La variable timeBlink en la tarea8 incrementa cada vez que se envía una dato por la cola, de esta forma se determina en que ciclo
- * puede estar el algoritmo. Si la variable llega a 10 se resetea.
- *
+ * Se implementa un sistema que mide la diferencia de tiempos entre flancos positivos y negativos
+ * generados por dos pulsos provenientes de dos pulsadores, cuyas ocurrencias se solapen temporalmente.
+ * Cada caso de solapamiento tendrá un led específico asociado, el cual se encenderá
+ * inmediatamente luego de que los dos botones dejen de ser presionados. El tiempo en que el led
+ * correspondiente estará encendido será la suma de los tiempos entre flancos ascendentes y
+ * descendentes respectivamente.
  * */
 
 int main(void)  {
 
 	initHardware();
 
-	osInitTask(task1, &g_task1, PRIORITY_0);
-	osInitTask(task2, &g_task2, PRIORITY_0);
-	osInitTask(task3, &g_task3, PRIORITY_1);
+	osInitTask(taskFallingEdge, &g_taskFallingEdge, PRIORITY_0);
+	osInitTask(taskRisingEdge, &g_taskRisingEdge, PRIORITY_0);
+	osInitTask(taskEvent, &g_taskEvent, PRIORITY_1);
+	osInitTask(taskSendUart, &g_taskSendUart, PRIORITY_3);
 
-	osInitTask(task4, &g_task4, PRIORITY_2);
-	osInitTask(task5, &g_task5, PRIORITY_2);
-	osInitTask(task6, &g_task6, PRIORITY_2);
-	osInitTask(task7, &g_task7, PRIORITY_2);
+	osInitQueue(&queueButtonFallingEdge,sizeof(button));
+	osInitQueue(&queueButtonRisingEdge,sizeof(button));
 
-	osInitTask(task8, &g_task8, PRIORITY_3);
-
-	osInitSemaphore(&sem1);
-	osInitSemaphore(&sem2);
-
+	osInitQueue(&queueEvent,sizeof(event));
 	osInitQueue(&queueUart,sizeof(char));
 
-	osInitQueue(&timeBlinkTask4,sizeof(uint32_t));
-	osInitQueue(&timeBlinkTask5,sizeof(uint32_t));
-	osInitQueue(&timeBlinkTask6,sizeof(uint32_t));
-	osInitQueue(&timeBlinkTask7,sizeof(uint32_t));
-
-	osInstallIRQ(PIN_INT0_IRQn,t1_ISR);
-	osInstallIRQ(PIN_INT1_IRQn,t2_ISR);
+	osInstallIRQ(PIN_INT0_IRQn, b1_low_ISR);
+	osInstallIRQ(PIN_INT1_IRQn, b1_high_ISR);
+	osInstallIRQ(PIN_INT2_IRQn, b2_low_ISR);
+	osInstallIRQ(PIN_INT3_IRQn, b2_high_ISR);
 
 	osInit();
+
+	timeMseconds = 0; //Variable rollover que lleva el trancurso del tiempo
 
 	while (1) {}
 }
 
-void t1_ISR(void) {
-	osGiveSemaphore(&sem1);
+/*
+ * Tareas que que se asocian a la interrupciones de cada uno de los botones, se arma una
+ * estructura button con la información del la pulsación de cada botón para ser procesadas
+ * en las tareas taskFallingEdge y taskRisingEdge
+ *
+ * */
+
+void b1_low_ISR(void){
+	button btn;
+	btn.id = B1;
+	btn.mEdge = FALLING_EDGE;
+	btn.time = timeMseconds;
+	osPutQueue(&queueButtonFallingEdge,&btn);
 	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
 }
 
-void t2_ISR(void)  {
-	osGiveSemaphore(&sem2);
+void b1_high_ISR(void){
+	button btn;
+	btn.id = B1;
+	btn.mEdge = RISING_EDGE;
+	btn.time = timeMseconds;
+	osPutQueue(&queueButtonRisingEdge,&btn);
 	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
+}
+
+void b2_low_ISR(void){
+	button btn;
+	btn.id = B2;
+	btn.mEdge = FALLING_EDGE;
+	btn.time = timeMseconds;
+	osPutQueue(&queueButtonFallingEdge,&btn);
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 2 ) );
+}
+
+void b2_high_ISR(void){
+	button btn;
+	btn.id = B2;
+	btn.mEdge = RISING_EDGE;
+	btn.time = timeMseconds;
+	osPutQueue(&queueButtonRisingEdge,&btn);
+	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 3 ) );
 }
 
 /** @} doxygen end group definition */
